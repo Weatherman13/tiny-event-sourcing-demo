@@ -1,42 +1,64 @@
 package ru.quipy.logic
 
+import ru.quipy.api.ProjectAddedNewPartisipantEvent
 import ru.quipy.api.ProjectCreatedEvent
-import ru.quipy.api.TagAssignedToTaskEvent
-import ru.quipy.api.TagCreatedEvent
-import ru.quipy.api.TaskCreatedEvent
+import ru.quipy.api.StatusCreatedEvent
+import ru.quipy.api.StatusDeletedEvent
 import java.util.*
 
 
-// Commands : takes something -> returns event
-// Here the commands are represented by extension functions, but also can be the class member functions
-
-fun ProjectAggregateState.create(id: UUID, title: String, creatorId: String): ProjectCreatedEvent {
+fun ProjectAggregateState.create(name: String, creatorId: UUID): ProjectCreatedEvent {
+    if (name.isBlank())
+        throw IllegalArgumentException("Project name must be contain > 0 char: $name")
     return ProjectCreatedEvent(
-        projectId = id,
-        title = title,
-        creatorId = creatorId,
+        UUID.randomUUID(),
+        name,
+        creatorId
     )
 }
 
-fun ProjectAggregateState.addTask(name: String): TaskCreatedEvent {
-    return TaskCreatedEvent(projectId = this.getId(), taskId = UUID.randomUUID(), taskName = name)
+// TODO: Нужно ли здесь передавать id проекта? Ведь мы как бы уже в нем.
+//  С другой стороны это доп. проверка для того чтобы не накатить ивент на другой проекта по ошибке
+
+fun ProjectAggregateState.addPartisipant(
+    projectId: UUID,
+    partisipantId: UUID,
+    initiatorId: UUID
+): ProjectAddedNewPartisipantEvent {
+    if (getId() != projectId)
+        throw IllegalArgumentException("Passed id is not equals to target project ID")
+    if (!participantIds.contains(initiatorId))
+        throw IllegalArgumentException("You are not a member of the project")
+    if (participantIds.contains(partisipantId))
+        throw IllegalArgumentException("User is already a partisipant of the project")
+    return ProjectAddedNewPartisipantEvent(projectId, partisipantId, initiatorId)
 }
 
-fun ProjectAggregateState.createTag(name: String): TagCreatedEvent {
-    if (projectTags.values.any { it.name == name }) {
-        throw IllegalArgumentException("Tag already exists: $name")
-    }
-    return TagCreatedEvent(projectId = this.getId(), tagId = UUID.randomUUID(), tagName = name)
+fun ProjectAggregateState.createNewStatus(
+    projectId: UUID,
+    statusName: String,
+    color: Color,
+    initiatorId: UUID
+): StatusCreatedEvent {
+    if (getId() != projectId)
+        throw IllegalArgumentException("Passed id is not equals to target project ID")
+    if (statusName.isBlank())
+        throw IllegalArgumentException("Status name must be contain > 0 char: $statusName")
+    if (!participantIds.contains(initiatorId))
+        throw IllegalArgumentException("You are not a member of the project")
+    return StatusCreatedEvent(projectId, statusName, initiatorId, color)
 }
 
-fun ProjectAggregateState.assignTagToTask(tagId: UUID, taskId: UUID): TagAssignedToTaskEvent {
-    if (!projectTags.containsKey(tagId)) {
-        throw IllegalArgumentException("Tag doesn't exists: $tagId")
-    }
-
-    if (!tasks.containsKey(taskId)) {
-        throw IllegalArgumentException("Task doesn't exists: $taskId")
-    }
-
-    return TagAssignedToTaskEvent(projectId = this.getId(), tagId = tagId, taskId = taskId)
+fun ProjectAggregateState.deleteStatus(
+    projectId: UUID,
+    statusId: UUID,
+    initiatorId: UUID
+): StatusDeletedEvent {
+    if (getId() != projectId)
+        throw IllegalArgumentException("Passed id is not equals to target project ID")
+    if (!statuses.containsKey(statusId))
+        throw IllegalArgumentException("Status does not exist in target project : $statusId")
+    if (!participantIds.contains(initiatorId))
+        throw IllegalArgumentException("You are not a member of the project")
+    return StatusDeletedEvent(projectId, statusId, initiatorId)
 }
